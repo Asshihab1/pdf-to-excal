@@ -1,35 +1,53 @@
-// server.js or routes/pdf.js
-const express = require('express');
-const upload = require('./tools/fileUpload'); // Adjust the path as necessary
-const path = require('path');
-const fs = require('fs');
-const { exec } = require('child_process');
+// app.js
+const express = require("express");
+const upload = require("./tools/fileUpload");
+const path = require("path");
+const fs = require("fs");
+const extractPdfText = require("./tools/PdfParser");
 
 const app = express();
 const port = 3000;
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
 
-app.post('/upload', upload.single('file'), (req, res) => {
-  const pdfPath = req.file.path;
-  const pythonScript = path.join(__dirname, 'python', 'pdfExtract.py');
+app.post("/upload", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
 
-  exec(`python3 ${pythonScript} "${pdfPath}"`, (error, stdout, stderr) => {
-    fs.unlinkSync(pdfPath);
+  if (!req.file.mimetype.includes("pdf")) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: "Only PDF files are allowed" });
+  }
 
-    if (error) {
-      console.error('Python error:', error);
-      return res.status(500).json({ error: 'Python script failed.' });
+  try {
+    const result = await extractPdfText(req.file.path);
+    fs.unlinkSync(req.file.path);
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
     }
 
-    try {
-      const result = JSON.parse(stdout);
-      res.json({ tables: result });
-    } catch (err) {
-      console.error('JSON parse error:', err);
-      res.status(500).json({ error: 'Failed to parse Python output.' });
+    res.status(200).json({ data: result.tables });
+  } catch (err) {
+    console.error("Error:", err.message);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
     }
-  });
+    res.status(500).json({
+      error: "Failed to process PDF",
+      details: err.message,
+    });
+  }
+});
+
+// Health check route
+app.get("/", (req, res) => {
+  res.send("✅ PDF to Table API is running!");
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Server is running at http://localhost:${port}`);
+  console.log(`🚀 Server running at http://localhost:${port}`);
 });
