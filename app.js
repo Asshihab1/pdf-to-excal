@@ -14,6 +14,10 @@ const downloadDir = path.join(__dirname, "downloads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir);
 
+
+
+
+
 app.post("/upload", upload.array("file"), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: "No PDF files uploaded." });
@@ -30,8 +34,11 @@ app.post("/upload", upload.array("file"), async (req, res) => {
     };
 
     try {
+      console.log(`📄 Processing: ${file.originalname} => ${file.path}`);
+
       if (!file.mimetype.includes("pdf")) {
         result.error = "Only PDF files are allowed.";
+        results.push(result);
         continue;
       }
 
@@ -44,20 +51,22 @@ app.post("/upload", upload.array("file"), async (req, res) => {
         result.error = parsed.error || "Failed to parse PDF.";
       }
     } catch (err) {
-      console.error(`Error processing file ${file.originalname}:`, err.message);
+      console.error(`❌ Error processing file ${file.originalname}:`, err.message);
       result.error = err.message;
-    } finally {
-      if (file?.path && fs.existsSync(file.path)) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (cleanupErr) {
-          console.warn(`⚠️ Failed to delete file: ${file.path}`);
-        }
+    }
+
+    // Push result BEFORE deleting file
+    results.push(result);
+
+    // Delete file after processing
+    if (file?.path && fs.existsSync(file.path)) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch (cleanupErr) {
+        console.warn(`⚠️ Failed to delete file: ${file.path}`);
       }
-      results.push(result);
     }
   }
-
 
   const outputPath = path.join(downloadDir, "output.xlsx");
   await generateExcel(results, outputPath);
@@ -66,9 +75,14 @@ app.post("/upload", upload.array("file"), async (req, res) => {
     message: "Excel exported successfully.",
     file: "output.xlsx",
     path: outputPath,
-    result : results,
+    result: results,
   });
 });
+
+
+
+
+
 
 
 app.get("/", (req, res) => {

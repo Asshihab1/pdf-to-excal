@@ -1,22 +1,48 @@
 const fs = require("fs");
 const pdf2table = require("pdf2table");
+const path = require("path");
+
+/**
+ * Waits until the file exists and is readable (maxRetries * delay ms)
+ */
+async function waitForFileExists(filePath, maxRetries = 10, delay = 100) {
+  for (let i = 0; i < maxRetries; i++) {
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.accessSync(filePath, fs.constants.R_OK);
+        return true;
+      } catch (e) {
+        // File exists but not readable yet
+      }
+    }
+    await new Promise((res) => setTimeout(res, delay));
+  }
+  return false;
+}
 
 const extractPdfText = async (pdfPath) => {
   try {
+    const fileExists = await waitForFileExists(pdfPath);
+    if (!fileExists) {
+      return {
+        success: false,
+        error: `File not found or unreadable after retry: ${pdfPath}`,
+      };
+    }
+
     const buffer = fs.readFileSync(pdfPath);
 
-    return await new Promise((resolve, reject) => {
+    return await new Promise((resolve) => {
       pdf2table.parse(buffer, (err, rows) => {
-        if (err || !rows || !Array.isArray(rows)) {
+        if (err || !Array.isArray(rows) || rows.length === 0) {
           return resolve({
             success: false,
             error: err?.message || "Failed to parse PDF using pdf2table",
           });
         }
 
-        // Filter non-empty rows
         const cleanRows = rows.filter((row) =>
-          row.some((cell) => cell.trim() !== "")
+          row.some((cell) => (cell || "").trim() !== "")
         );
 
         const table1 = {}; // PO Info
@@ -28,11 +54,7 @@ const extractPdfText = async (pdfPath) => {
           const rowStr = row.join(" ");
 
           // Table 1: Purchase Order Info
-          if (
-            !table1.po &&
-            rowStr.includes("PO:") &&
-            rowStr.includes("Factory:")
-          ) {
+          if (!table1.po && rowStr.includes("PO:") && rowStr.includes("Factory:")) {
             const poMatch = rowStr.match(/PO:\s*(\d+)/);
             const factoryMatch = rowStr.match(/Factory:\s*(.+?)(?:Vendor:|$)/);
             const vendorMatch = rowStr.match(/Vendor:\s*(.+)/);
@@ -53,9 +75,9 @@ const extractPdfText = async (pdfPath) => {
           if (row.length >= 9 && /^\d{13}$/.test(row[3])) {
             try {
               table3.push({
-                color: row[0],
-                color_description: row[1],
-                size: row[2],
+                color: row[0]?.trim(),
+                color_description: row[1]?.trim(),
+                size: row[2]?.trim(),
                 upc: row[3],
                 original_quantity: parseInt(row[4]) || 0,
                 current_quantity: parseInt(row[5]) || 0,
