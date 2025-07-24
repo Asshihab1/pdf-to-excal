@@ -43,7 +43,6 @@ app.post("/upload", upload.array("file"), async (req, res) => {
       }
 
       const parsed = await extractPdfText(file.path);
-
       if (parsed.success) {
         result.success = true;
         result.tables = parsed.tables;

@@ -13,7 +13,7 @@ async function generateExcel(results, outputPath) {
 
   // Header
   sheet.columns = [
-    { header: "PO", key: "po", width: 18 },
+    { header: "PO", key: "po", width: 18 , style:{alignment:{ horizontal: "center"}}},
     { header: "Vendor", key: "vendor", width: 25 },
     { header: "Factory", key: "factory", width: 30 },
     { header: "Style", key: "style", width: 20 },
@@ -50,10 +50,9 @@ async function generateExcel(results, outputPath) {
     }
   }
 
-  // Size order (XS < S < M < L < XL < XXL...)
+
   const sizeOrder = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 
-  // Sort allRows by PO, then size (custom logic)
   allRows.sort((a, b) => {
     if (a.po !== b.po) return a.po.localeCompare(b.po);
     const aIndex = sizeOrder.indexOf(a.size.toUpperCase());

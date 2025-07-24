@@ -2,9 +2,6 @@ const fs = require("fs");
 const pdf2table = require("pdf2table");
 const path = require("path");
 
-/**
- * Waits until the file exists and is readable (maxRetries * delay ms)
- */
 async function waitForFileExists(filePath, maxRetries = 10, delay = 100) {
   for (let i = 0; i < maxRetries; i++) {
     if (fs.existsSync(filePath)) {
@@ -12,7 +9,7 @@ async function waitForFileExists(filePath, maxRetries = 10, delay = 100) {
         fs.accessSync(filePath, fs.constants.R_OK);
         return true;
       } catch (e) {
-        // File exists but not readable yet
+
       }
     }
     await new Promise((res) => setTimeout(res, delay));
