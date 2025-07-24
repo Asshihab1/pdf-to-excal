@@ -1,49 +1,76 @@
-// app.js
 const express = require("express");
 const upload = require("./tools/fileUpload");
 const path = require("path");
 const fs = require("fs");
 const extractPdfText = require("./tools/PdfParser");
+const generateExcel = require("./generator/generateExcel");
 
 const app = express();
 const port = 3000;
+
+
 const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+const downloadDir = path.join(__dirname, "downloads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir);
 
-app.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+app.post("/upload", upload.array("file"), async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: "No PDF files uploaded." });
   }
 
-  if (!req.file.mimetype.includes("pdf")) {
-    fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: "Only PDF files are allowed" });
-  }
+  const results = [];
 
-  try {
-    const result = await extractPdfText(req.file.path);
-    fs.unlinkSync(req.file.path);
+  for (const file of req.files) {
+    const result = {
+      file: file.originalname,
+      success: false,
+      error: null,
+      tables: null,
+    };
 
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
+    try {
+      if (!file.mimetype.includes("pdf")) {
+        result.error = "Only PDF files are allowed.";
+        continue;
+      }
+
+      const parsed = await extractPdfText(file.path);
+
+      if (parsed.success) {
+        result.success = true;
+        result.tables = parsed.tables;
+      } else {
+        result.error = parsed.error || "Failed to parse PDF.";
+      }
+    } catch (err) {
+      console.error(`Error processing file ${file.originalname}:`, err.message);
+      result.error = err.message;
+    } finally {
+      if (file?.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (cleanupErr) {
+          console.warn(`⚠️ Failed to delete file: ${file.path}`);
+        }
+      }
+      results.push(result);
     }
-
-    res.status(200).json({ data: result.tables });
-  } catch (err) {
-    console.error("Error:", err.message);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    res.status(500).json({
-      error: "Failed to process PDF",
-      details: err.message,
-    });
   }
+
+
+  const outputPath = path.join(downloadDir, "output.xlsx");
+  await generateExcel(results, outputPath);
+
+  res.status(200).json({
+    message: "Excel exported successfully.",
+    file: "output.xlsx",
+    path: outputPath,
+    result : results,
+  });
 });
 
-// Health check route
+
 app.get("/", (req, res) => {
   res.send("✅ PDF to Table API is running!");
 });
